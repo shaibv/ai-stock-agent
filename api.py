@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
-import os
 from pathlib import Path
 from datetime import date
 from fastapi import FastAPI, HTTPException, Query
@@ -10,7 +9,8 @@ from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from main import run_daily
-from tracker import load_state, calculate_value, DATA_DIR, STATE_FILE, STARTING_CASH
+from tracker import load_state, calculate_value, STARTING_CASH
+from db import supabase
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -32,7 +32,34 @@ async def dashboard():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "date": date.today().isoformat()}
+    sb_status = "not configured"
+    if supabase:
+        try:
+            supabase.table("agent_state").select("count", count="exact").limit(0).execute()
+            sb_status = "connected"
+        except Exception as e:
+            sb_status = f"error: {e}"
+    return {"status": "ok", "date": date.today().isoformat(), "supabase": sb_status}
+
+
+@app.post("/seed-db")
+async def seed_db():
+    """Seed initial agent rows (run after creating tables in Supabase SQL Editor)."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    seeded = []
+    for name in ("momentum", "value"):
+        try:
+            supabase.table("agent_state").upsert(
+                {"name": name, "cash": 100000.0, "holdings": {}, "last_portfolio": None},
+                on_conflict="name",
+            ).execute()
+            seeded.append(name)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to seed {name}: {e}")
+
+    return {"seeded": seeded}
 
 
 @app.post("/run")
@@ -85,35 +112,53 @@ async def status():
 
 
 @app.get("/logs/{agent_name}", response_class=PlainTextResponse)
-async def get_logs(agent_name: str, lines: int = Query(default=50, ge=1, le=500)):
-    """Return the last N lines from an agent's daily log file."""
+async def get_logs(agent_name: str, days: int = Query(default=30, ge=1, le=365)):
+    """Return the last N days of log entries from Supabase."""
     if agent_name not in ("momentum", "value"):
         raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
 
-    log_path = os.path.join(DATA_DIR, f"{agent_name}.log")
-    if not os.path.exists(log_path):
-        raise HTTPException(status_code=404, detail=f"No log file found for {agent_name}")
+    result = (
+        supabase.table("agent_logs")
+        .select("log_text")
+        .eq("agent_name", agent_name)
+        .order("date", desc=True)
+        .limit(days)
+        .execute()
+    )
 
-    with open(log_path, "r") as f:
-        all_lines = f.readlines()
+    if not result.data:
+        raise HTTPException(status_code=404, detail=f"No logs found for {agent_name}")
 
-    tail = all_lines[-lines:]
-    return "".join(tail)
+    return "\n".join(row["log_text"] for row in reversed(result.data))
 
 
 @app.get("/history/{agent_name}")
 async def get_history(agent_name: str, last: int = Query(default=30, ge=1, le=365)):
-    """Return the last N days of history for an agent."""
+    """Return the last N days of history for an agent from Supabase."""
     if agent_name not in ("momentum", "value"):
         raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
 
-    state = load_state()
-    history = state["agents"][agent_name]["history"]
+    total = (
+        supabase.table("agent_history")
+        .select("*", count="exact")
+        .eq("agent_name", agent_name)
+        .execute()
+    )
 
-    entries = history[-last:]
+    entries = (
+        supabase.table("agent_history")
+        .select("date, value, trades, trade_cost, portfolio")
+        .eq("agent_name", agent_name)
+        .order("date", desc=True)
+        .limit(last)
+        .execute()
+    )
+
+    rows = list(reversed(entries.data)) if entries.data else []
+
     return {
         "agent": agent_name,
-        "total_days": len(history),
-        "showing": len(entries),
-        "history": entries,
+        "total_days": total.count or 0,
+        "showing": len(rows),
+        "history": rows,
     }

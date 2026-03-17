@@ -46,7 +46,7 @@ def run_daily() -> dict:
             }
             continue
 
-        rebalance_info = execute_rebalance(agent_state, portfolio)
+        rebalance_info = execute_rebalance(name, agent_state, portfolio)
         display_portfolio(label, portfolio, rebalance_info)
 
         daily_results[name] = {
@@ -69,12 +69,12 @@ def run_daily() -> dict:
             holdings=agent_state["holdings"],
             cash=agent_state["cash"],
         )
-        print(f"  Log appended to data/{name}.log")
+        print(f"  Log saved to Supabase")
 
     save_state(state)
     display_competition(state, daily_results)
     print(f"  Total API calls today: {api_counter['calls']}")
-    print(f"  State saved to data/history.json\n")
+    print(f"  State saved to Supabase\n")
 
     return {
         "date": today,

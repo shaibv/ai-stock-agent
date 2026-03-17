@@ -1,47 +1,54 @@
-import json
-import os
 import math
 from datetime import date
 import yfinance as yf
-
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-STATE_FILE = os.path.join(DATA_DIR, "history.json")
+from db import supabase
 
 TRADE_COST = 3.0
 STARTING_CASH = 100_000.0
 
 
 def load_state() -> dict:
-    """Load persistent state from disk, or return a fresh initial state."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    return _init_state()
+    """Load persistent state from Supabase."""
+    state = {"agents": {}}
+
+    for name in ("momentum", "value"):
+        row = (
+            supabase.table("agent_state")
+            .select("*")
+            .eq("name", name)
+            .single()
+            .execute()
+        )
+        agent = row.data
+
+        history_rows = (
+            supabase.table("agent_history")
+            .select("date, value, trades, trade_cost, portfolio")
+            .eq("agent_name", name)
+            .order("date")
+            .execute()
+        )
+
+        state["agents"][name] = {
+            "cash": agent["cash"],
+            "holdings": agent["holdings"] or {},
+            "last_portfolio": agent["last_portfolio"],
+            "history": history_rows.data or [],
+        }
+
+    return state
 
 
 def save_state(state: dict) -> None:
-    """Write state to disk, creating the data/ directory if needed."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
-
-
-def _init_state() -> dict:
-    return {
-        "agents": {
-            "momentum": _init_agent(),
-            "value": _init_agent(),
-        }
-    }
-
-
-def _init_agent() -> dict:
-    return {
-        "cash": STARTING_CASH,
-        "holdings": {},
-        "last_portfolio": None,
-        "history": [],
-    }
+    """Write current agent state back to Supabase."""
+    for name in ("momentum", "value"):
+        agent = state["agents"][name]
+        supabase.table("agent_state").update({
+            "cash": agent["cash"],
+            "holdings": agent["holdings"],
+            "last_portfolio": agent["last_portfolio"],
+            "updated_at": date.today().isoformat(),
+        }).eq("name", name).execute()
 
 
 def fetch_prices(tickers: list[str]) -> dict[str, float]:
@@ -101,10 +108,10 @@ def diff_portfolios(old_portfolio: dict | None, new_portfolio: dict) -> list[dic
     return trades
 
 
-def execute_rebalance(agent_state: dict, new_portfolio: dict) -> dict:
+def execute_rebalance(agent_name: str, agent_state: dict, new_portfolio: dict) -> dict:
     """
     Convert a new portfolio (weight percentages) into actual share holdings.
-    Deducts $3 per trade from cash. Returns summary of what changed.
+    Deducts $3 per trade from cash. Persists history to Supabase.
     """
     old_portfolio = agent_state.get("last_portfolio")
     trades = diff_portfolios(old_portfolio, new_portfolio)
@@ -142,13 +149,26 @@ def execute_rebalance(agent_state: dict, new_portfolio: dict) -> dict:
     today = date.today().isoformat()
     new_value = round(allocated + remaining_cash, 2)
 
-    agent_state["history"].append({
+    history_entry = {
         "date": today,
         "value": new_value,
         "trades": num_trades,
         "trade_cost": trade_cost,
         "portfolio": new_portfolio,
-    })
+    }
+    agent_state["history"].append(history_entry)
+
+    supabase.table("agent_history").upsert(
+        {
+            "agent_name": agent_name,
+            "date": today,
+            "value": new_value,
+            "trades": num_trades,
+            "trade_cost": trade_cost,
+            "portfolio": new_portfolio,
+        },
+        on_conflict="agent_name,date",
+    ).execute()
 
     return {
         "trades": trades,

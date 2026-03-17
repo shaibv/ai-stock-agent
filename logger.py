@@ -1,7 +1,5 @@
-import os
 from datetime import date
-
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+from db import supabase
 
 
 def write_daily_log(
@@ -14,10 +12,7 @@ def write_daily_log(
     holdings: dict[str, int],
     cash: float,
 ) -> None:
-    """Append a formatted daily entry to data/{agent_name}.log."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    log_path = os.path.join(DATA_DIR, f"{agent_name}.log")
-
+    """Write a formatted daily entry to the agent_logs table in Supabase."""
     today = date.today().isoformat()
     pct = ((new_value / prev_value) - 1) * 100 if prev_value else 0
 
@@ -63,5 +58,10 @@ def write_daily_log(
     lines.append("═" * (len(f"══ {today} ") + 40))
     lines.append("")
 
-    with open(log_path, "a") as f:
-        f.write("\n".join(lines) + "\n")
+    log_text = "\n".join(lines)
+
+    supabase.table("agent_logs").insert({
+        "agent_name": agent_name,
+        "date": today,
+        "log_text": log_text,
+    }).execute()
