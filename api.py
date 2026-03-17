@@ -7,12 +7,13 @@ from datetime import date
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from main import run_daily
 from tracker import load_state, calculate_value, STARTING_CASH
 from db import supabase
 
-STATIC_DIR = Path(__file__).parent / "static"
+DIST_DIR = Path(__file__).parent / "static" / "dist"
 
 app = FastAPI(
     title="Stock Agent Competition API",
@@ -20,14 +21,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+if DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
 
 _run_lock = asyncio.Lock()
-
-
-@app.get("/", include_in_schema=False)
-async def dashboard():
-    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @app.get("/health")
@@ -162,3 +166,12 @@ async def get_history(agent_name: str, last: int = Query(default=30, ge=1, le=36
         "showing": len(rows),
         "history": rows,
     }
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str):
+    """Serve the React SPA for all non-API routes (production only)."""
+    index = DIST_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    return {"detail": "Frontend not built. Run: cd frontend && npm run build"}
