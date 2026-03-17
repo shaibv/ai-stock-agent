@@ -2,3 +2,5 @@ openai
 yfinance
 python-dotenv
 requests
+fastapi
+uvicorn[standard]

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Agent Competition</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22252f;
+    --border: #2e3140;
+    --text: #e1e4eb;
+    --text-muted: #8b8fa3;
+    --green: #00c781;
+    --red: #ff4d4f;
+    --yellow: #faad14;
+    --accent: #6c5ce7;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.5;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+
+  .leader-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .agent-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .agent-header {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .agent-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .dot-red { background: var(--red); }
+  .dot-blue { background: var(--accent); }
+
+  .agent-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .stats-row {
+    display: flex;
+    gap: 20px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stat-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral-color { color: var(--yellow); }
+
+  .section-title {
+    padding: 12px 20px 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  th {
+    text-align: left;
+    padding: 6px 20px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 8px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  tr:nth-child(even) td {
+    background: var(--surface2);
+  }
+
+  .signal-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .signal-bullish {
+    background: rgba(0, 199, 129, 0.15);
+    color: var(--green);
+  }
+
+  .signal-bearish {
+    background: rgba(255, 77, 79, 0.15);
+    color: var(--red);
+  }
+
+  .signal-neutral {
+    background: rgba(250, 173, 20, 0.15);
+    color: var(--yellow);
+  }
+
+  .confidence-stars {
+    color: var(--yellow);
+    letter-spacing: 1px;
+  }
+
+  .activity-list {
+    padding: 8px 20px 16px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .activity-entry {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .activity-entry:last-child { border-bottom: none; }
+
+  .activity-date {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  .trade-tag {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-right: 4px;
+  }
+
+  .trade-buy { background: rgba(0,199,129,0.15); color: var(--green); }
+  .trade-sell { background: rgba(255,77,79,0.15); color: var(--red); }
+  .trade-rebalance { background: rgba(108,92,231,0.15); color: var(--accent); }
+
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .refresh-note {
+    text-align: center;
+    padding: 16px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>STOCK AGENT COMPETITION</h1>
+  <div class="leader-badge" id="leader-badge">Loading...</div>
+</div>
+
+<div class="grid" id="agents-grid">
+  <div class="loading">Loading agent data...</div>
+</div>
+
+<div class="refresh-note">Auto-refreshes every 60s</div>
+
+<script>
+const CONF_STARS = { high: '★★★', medium: '★★☆', low: '★☆☆' };
+const AGENTS = [
+  { key: 'momentum', name: 'MOMENTUM TRADER', dotClass: 'dot-red' },
+  { key: 'value', name: 'VALUE ANALYST', dotClass: 'dot-blue' },
+];
+
+async function fetchData() {
+  const [statusRes, mHistRes, vHistRes] = await Promise.all([
+    fetch('/status'),
+    fetch('/history/momentum?last=10'),
+    fetch('/history/value?last=10'),
+  ]);
+  const status = await statusRes.json();
+  const mHist = await mHistRes.json();
+  const vHist = await vHistRes.json();
+  return { status, history: { momentum: mHist.history, value: vHist.history } };
+}
+
+function signalPill(signal) {
+  const s = (signal || 'neutral').toLowerCase();
+  const cls = s === 'bullish' ? 'signal-bullish' : s === 'bearish' ? 'signal-bearish' : 'signal-neutral';
+  return `<span class="signal-pill ${cls}">${s}</span>`;
+}
+
+function pctClass(val) {
+  return val >= 0 ? 'positive' : 'negative';
+}
+
+function fmt$(val) {
+  return '$' + Math.round(val).toLocaleString();
+}
+
+function renderAgent(agentMeta, agentData, history) {
+  const ret = agentData.total_return_pct;
+  const retSign = ret >= 0 ? '+' : '';
+  const portfolio = agentData.last_portfolio?.portfolio || [];
+
+  let holdingsRows = '';
+  const sorted = [...portfolio].sort((a, b) => b.weight_pct - a.weight_pct);
+  for (const h of sorted) {
+    const conf = CONF_STARS[h.confidence] || CONF_STARS.low;
+    const shares = agentData.holdings?.[h.ticker] || 0;
+    holdingsRows += `
+      <tr>
+        <td style="font-weight:600">${h.ticker}</td>
+        <td>${h.weight_pct}%</td>
+        <td>${shares}</td>
+        <td>${signalPill(h.signal)}</td>
+        <td><span class="confidence-stars">${conf}</span></td>
+      </tr>`;
+  }
+
+  let activityHtml = '';
+  const reversedHist = [...history].reverse();
+  for (const day of reversedHist) {
+    const p = day.portfolio?.portfolio || [];
+    const trades = day.trades || 0;
+    const cost = day.trade_cost || 0;
+    if (trades === 0) {
+      activityHtml += `
+        <div class="activity-entry">
+          <div class="activity-date">${day.date}</div>
+          <span style="color:var(--text-muted)">No changes (held)</span>
+        </div>`;
+    } else {
+      const tickers = p.map(h => h.ticker).join(', ');
+      activityHtml += `
+        <div class="activity-entry">
+          <div class="activity-date">${day.date} &mdash; ${trades} trade${trades > 1 ? 's' : ''}, ${fmt$(cost)} fees</div>
+          <div>${tickers}</div>
+        </div>`;
+    }
+  }
+
+  return `
+    <div class="agent-card">
+      <div class="agent-header">
+        <div class="agent-name">
+          <span class="dot ${agentMeta.dotClass}"></span>
+          ${agentMeta.name}
+        </div>
+        <div class="agent-value ${pctClass(ret)}">${fmt$(agentData.current_value)}</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat">
+          <span class="stat-label">Return</span>
+          <span class="stat-value ${pctClass(ret)}">${retSign}${ret.toFixed(2)}%</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Cash</span>
+          <span class="stat-value">${fmt$(agentData.cash)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Days</span>
+          <span class="stat-value">${agentData.days_tracked}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Trades</span>
+          <span class="stat-value">${agentData.total_trades}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Fees</span>
+          <span class="stat-value">${fmt$(agentData.total_fees)}</span>
+        </div>
+      </div>
+      <div class="section-title">Holdings</div>
+      <table>
+        <thead>
+          <tr><th>Ticker</th><th>Weight</th><th>Shares</th><th>Signal</th><th>Conf</th></tr>
+        </thead>
+        <tbody>${holdingsRows || '<tr><td colspan="5" style="color:var(--text-muted)">No holdings yet</td></tr>'}</tbody>
+      </table>
+      <div class="section-title" style="margin-top:8px">Recent Activity</div>
+      <div class="activity-list">
+        ${activityHtml || '<div class="activity-entry" style="color:var(--text-muted)">No activity yet</div>'}
+      </div>
+    </div>`;
+}
+
+async function render() {
+  try {
+    const { status, history } = await fetchData();
+    const grid = document.getElementById('agents-grid');
+    const badge = document.getElementById('leader-badge');
+
+    let html = '';
+    for (const meta of AGENTS) {
+      const data = status.agents[meta.key];
+      const hist = history[meta.key] || [];
+      html += renderAgent(meta, data, hist);
+    }
+    grid.innerHTML = html;
+
+    const mVal = status.agents.momentum.current_value;
+    const vVal = status.agents.value.current_value;
+    if (status.leader === 'tied') {
+      badge.innerHTML = 'TIED';
+    } else {
+      const lead = Math.abs(mVal - vVal);
+      const winner = status.leader === 'momentum' ? 'MOMENTUM' : 'VALUE';
+      const pct = ((lead / 100000) * 100).toFixed(2);
+      badge.innerHTML = `Leader: ${winner} +${fmt$(lead)} (+${pct}%)`;
+    }
+  } catch (e) {
+    document.getElementById('agents-grid').innerHTML =
+      `<div class="loading">Error loading data. Is the API running?</div>`;
+  }
+}
+
+render();
+setInterval(render, 60000);
+</script>
+</body>
+</html>

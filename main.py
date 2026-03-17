@@ -9,7 +9,11 @@ from portfolio import display_portfolio, validate_portfolio, display_competition
 from logger import write_daily_log
 
 
-def run_daily():
+def run_daily() -> dict:
+    """
+    Run both agents, rebalance, save state.
+    Returns a structured results dict for API consumption.
+    """
     state = load_state()
     api_counter = {"calls": 0}
     today = date.today().isoformat()
@@ -35,12 +39,25 @@ def run_daily():
 
         if not validate_portfolio(portfolio):
             print(f"  {name}: invalid portfolio, skipping rebalance")
+            daily_results[name] = {
+                "error": "invalid portfolio",
+                "raw_portfolio": portfolio,
+                "api_calls": calls_used,
+            }
             continue
 
         rebalance_info = execute_rebalance(agent_state, portfolio)
         display_portfolio(label, portfolio, rebalance_info)
 
-        daily_results[name] = rebalance_info
+        daily_results[name] = {
+            "portfolio": portfolio,
+            "prev_value": rebalance_info["prev_value"],
+            "new_value": rebalance_info["new_value"],
+            "trades": rebalance_info["trades"],
+            "num_trades": rebalance_info["num_trades"],
+            "trade_cost": rebalance_info["trade_cost"],
+            "api_calls": calls_used,
+        }
 
         write_daily_log(
             agent_name=name,
@@ -58,6 +75,12 @@ def run_daily():
     display_competition(state, daily_results)
     print(f"  Total API calls today: {api_counter['calls']}")
     print(f"  State saved to data/history.json\n")
+
+    return {
+        "date": today,
+        "api_calls_total": api_counter["calls"],
+        "agents": daily_results,
+    }
 
 
 if __name__ == "__main__":
