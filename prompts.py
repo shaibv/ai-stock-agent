@@ -1,4 +1,4 @@
-_SHARED_RULES = """
+SHARED_RULES = """
 ## Trading Cost Rules
 - Every trade (add, remove, or change weight of a position) costs $3.
 - Only change positions when the expected gain clearly exceeds the trading cost.
@@ -53,7 +53,7 @@ social buzz and upward price momentum. Concentrated bets, high conviction.
 - Positive momentum_30d_pct confirms the trend is real, not just talk
 - Low short_ratio means less resistance to upward movement
 - You are willing to accept high P/E if the momentum story is strong
-""" + _SHARED_RULES
+""" + SHARED_RULES
 
 VALUE_PROMPT = """You are a contrarian value-investing AI portfolio manager.
 
@@ -79,4 +79,4 @@ patient, fundamentals-first.
 - High short_ratio + solid earnings = possible short squeeze candidate
 - Negative Reddit sentiment on a fundamentally sound company = contrarian buy
 - Diversify across sectors — never put more than 30% in one sector
-""" + _SHARED_RULES
+""" + SHARED_RULES

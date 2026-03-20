@@ -7,11 +7,11 @@ TRADE_COST = 3.0
 STARTING_CASH = 100_000.0
 
 
-def load_state() -> dict:
-    """Load persistent state from Supabase."""
+def load_state(agent_names: list[str]) -> dict:
+    """Load persistent state from Supabase for the given agent names."""
     state = {"agents": {}}
 
-    for name in ("momentum", "value"):
+    for name in agent_names:
         row = (
             supabase.table("agent_state")
             .select("*")
@@ -41,8 +41,7 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     """Write current agent state back to Supabase."""
-    for name in ("momentum", "value"):
-        agent = state["agents"][name]
+    for name, agent in state["agents"].items():
         supabase.table("agent_state").update({
             "cash": agent["cash"],
             "holdings": agent["holdings"],

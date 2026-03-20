@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const CONF_STARS = { high: '★★★', medium: '★★☆', low: '★☆☆' };
@@ -11,8 +12,9 @@ function SignalPill({ signal }) {
   return <span className={`signal-pill ${cls}`}>{s}</span>;
 }
 
-export default function AgentCard({ name, label, dotColor, data, history }) {
+export default function AgentCard({ name, label, dotColor, data, history, locked, promptText, onDelete }) {
   if (!data) return null;
+  const [strategyOpen, setStrategyOpen] = useState(false);
 
   const ret = data.total_return_pct;
   const retSign = ret >= 0 ? '+' : '';
@@ -26,9 +28,17 @@ export default function AgentCard({ name, label, dotColor, data, history }) {
         <div className="mono" style={styles.name}>
           <span style={{ ...styles.dot, background: dotColor }} />
           {label}
+          {locked && (
+            <span style={styles.builtinBadge}>Built-in</span>
+          )}
         </div>
-        <div className={`mono ${ret >= 0 ? 'positive' : 'negative'}`} style={styles.value}>
-          {fmt$(data.current_value)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className={`mono ${ret >= 0 ? 'positive' : 'negative'}`} style={styles.value}>
+            {fmt$(data.current_value)}
+          </div>
+          {!locked && onDelete && (
+            <button onClick={() => onDelete(name)} style={styles.deleteBtn} title="Remove agent">✕</button>
+          )}
         </div>
       </div>
 
@@ -39,6 +49,21 @@ export default function AgentCard({ name, label, dotColor, data, history }) {
         <Stat label="Trades" value={data.total_trades} />
         <Stat label="Fees" value={fmt$(data.total_fees)} />
       </div>
+
+      {promptText && (
+        <>
+          <div
+            className="section-title mono"
+            onClick={() => setStrategyOpen(o => !o)}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            {strategyOpen ? '▼' : '▶'} Strategy
+          </div>
+          {strategyOpen && (
+            <pre style={styles.strategyBox}>{promptText}</pre>
+          )}
+        </>
+      )}
 
       <div className="section-title">
         Holdings
@@ -124,4 +149,18 @@ const styles = {
   activityList: { padding: '8px 20px 16px', maxHeight: 280, overflowY: 'auto' },
   activityEntry: { padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 12 },
   activityDate: { color: 'var(--text-muted)', fontSize: 11, marginBottom: 4 },
+  builtinBadge: {
+    fontSize: 9, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+    background: 'var(--border)', color: 'var(--text-muted)', padding: '2px 5px', borderRadius: 3,
+  },
+  deleteBtn: {
+    background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)',
+    borderRadius: 4, cursor: 'pointer', fontSize: 12, padding: '2px 7px', lineHeight: 1,
+  },
+  strategyBox: {
+    margin: '0 20px 0', padding: '10px 12px',
+    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4,
+    fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    maxHeight: 160, overflowY: 'auto', fontFamily: 'inherit',
+  },
 };

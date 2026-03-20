@@ -12,6 +12,7 @@ export default defineConfig({
       '/logs': 'http://localhost:8000',
       '/run': 'http://localhost:8000',
       '/seed-db': 'http://localhost:8000',
+      '/agents': 'http://localhost:8000',
     },
   },
   build: {

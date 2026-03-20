@@ -2,12 +2,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
+import re
 from pathlib import Path
 from datetime import date
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 
 from main import run_daily
 from tracker import load_state, calculate_value, STARTING_CASH
@@ -52,6 +54,12 @@ async def seed_db():
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
+    from prompts import MOMENTUM_PROMPT, VALUE_PROMPT, SHARED_RULES
+
+    # Strip SHARED_RULES from the built-in prompts to get the strategy-only part
+    momentum_strategy = MOMENTUM_PROMPT.replace(SHARED_RULES, "").strip()
+    value_strategy = VALUE_PROMPT.replace(SHARED_RULES, "").strip()
+
     seeded = []
     for name in ("momentum", "value"):
         try:
@@ -61,9 +69,102 @@ async def seed_db():
             ).execute()
             seeded.append(name)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to seed {name}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to seed agent_state {name}: {e}")
+
+    built_ins = [
+        {"name": "momentum", "display_name": "MOMENTUM TRADER", "prompt_text": momentum_strategy, "color": "#ff4444", "locked": True},
+        {"name": "value",    "display_name": "VALUE ANALYST",   "prompt_text": value_strategy,    "color": "#4ade80", "locked": True},
+    ]
+    for row in built_ins:
+        try:
+            supabase.table("agents").upsert(row, on_conflict="name").execute()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to seed agents table: {e}")
 
     return {"seeded": seeded}
+
+
+# ---------- Agent config endpoints ----------
+
+@app.get("/agents")
+async def list_agents():
+    """Return all active agents."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    result = supabase.table("agents").select("name, display_name, color, locked, prompt_text").eq("active", True).execute()
+    return {"agents": result.data or []}
+
+
+class AgentCreate(BaseModel):
+    name: str
+    display_name: str
+    prompt_text: str
+    color: str = "#888888"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        if not re.match(r"^[a-z0-9_-]{2,32}$", v):
+            raise ValueError("name must be 2-32 lowercase alphanumeric/underscore/hyphen characters")
+        return v
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, v):
+        if len(v) > 40:
+            raise ValueError("display_name must be 40 characters or fewer")
+        return v
+
+    @field_validator("prompt_text")
+    @classmethod
+    def validate_prompt_text(cls, v):
+        if len(v.strip()) < 20:
+            raise ValueError("prompt_text must be at least 20 characters")
+        return v
+
+
+@app.post("/agents", status_code=201)
+async def create_agent(body: AgentCreate):
+    """Create a new custom agent."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    existing = supabase.table("agents").select("name").eq("name", body.name).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail=f"Agent '{body.name}' already exists")
+
+    # Ensure agent_state row exists for the new agent
+    supabase.table("agent_state").upsert(
+        {"name": body.name, "cash": 100000.0, "holdings": {}, "last_portfolio": None},
+        on_conflict="name",
+    ).execute()
+
+    supabase.table("agents").insert({
+        "name": body.name,
+        "display_name": body.display_name,
+        "prompt_text": body.prompt_text,
+        "color": body.color,
+        "locked": False,
+        "active": True,
+    }).execute()
+
+    return {"name": body.name, "display_name": body.display_name}
+
+
+@app.delete("/agents/{agent_name}")
+async def delete_agent(agent_name: str):
+    """Soft-delete a custom agent (locked agents cannot be deleted)."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    result = supabase.table("agents").select("locked").eq("name", agent_name).single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if result.data["locked"]:
+        raise HTTPException(status_code=403, detail="Built-in agents cannot be deleted")
+
+    supabase.table("agents").update({"active": False}).eq("name", agent_name).execute()
+    return {"deleted": agent_name}
 
 
 @app.post("/run")
@@ -81,11 +182,17 @@ async def trigger_run():
 
 @app.get("/status")
 async def status():
-    """Current portfolio values, holdings, and cash for both agents."""
-    state = load_state()
+    """Current portfolio values, holdings, and cash for all active agents."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    agents_result = supabase.table("agents").select("name").eq("active", True).execute()
+    agent_names = [r["name"] for r in (agents_result.data or [])]
+
+    state = load_state(agent_names)
     agents_status = {}
 
-    for name in ("momentum", "value"):
+    for name in agent_names:
         agent = state["agents"][name]
         current_value = calculate_value(agent)
         total_return = (current_value / STARTING_CASH - 1) * 100
@@ -104,9 +211,10 @@ async def status():
             "last_portfolio": agent.get("last_portfolio"),
         }
 
-    m_val = agents_status["momentum"]["current_value"]
-    v_val = agents_status["value"]["current_value"]
-    leader = "momentum" if m_val > v_val else "value" if v_val > m_val else "tied"
+    if agents_status:
+        leader = max(agents_status, key=lambda n: agents_status[n]["current_value"])
+    else:
+        leader = "none"
 
     return {
         "date": date.today().isoformat(),
@@ -118,8 +226,6 @@ async def status():
 @app.get("/logs/{agent_name}", response_class=PlainTextResponse)
 async def get_logs(agent_name: str, days: int = Query(default=30, ge=1, le=365)):
     """Return the last N days of log entries from Supabase."""
-    if agent_name not in ("momentum", "value"):
-        raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
@@ -141,8 +247,6 @@ async def get_logs(agent_name: str, days: int = Query(default=30, ge=1, le=365))
 @app.get("/history/{agent_name}")
 async def get_history(agent_name: str, last: int = Query(default=30, ge=1, le=365)):
     """Return the last N days of history for an agent from Supabase."""
-    if agent_name not in ("momentum", "value"):
-        raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 

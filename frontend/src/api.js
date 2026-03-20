@@ -24,3 +24,30 @@ export async function triggerRun() {
   if (!res.ok) throw new Error(`Run failed: ${res.status}`);
   return res.json();
 }
+
+export async function fetchAgents() {
+  const res = await fetch(`${BASE}/agents`);
+  if (!res.ok) throw new Error(`Agents API error: ${res.status}`);
+  return res.json();
+}
+
+export async function createAgent(data) {
+  const res = await fetch(`${BASE}/agents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (res.status === 409) throw new Error('An agent with that ID already exists');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Create failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteAgent(name) {
+  const res = await fetch(`${BASE}/agents/${name}`, { method: 'DELETE' });
+  if (res.status === 403) throw new Error('Built-in agents cannot be deleted');
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+  return res.json();
+}
