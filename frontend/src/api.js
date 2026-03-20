@@ -17,3 +17,10 @@ export async function fetchLogs(agentName, days = 30) {
   if (!res.ok) throw new Error(`Logs API error: ${res.status}`);
   return res.text();
 }
+
+export async function triggerRun() {
+  const res = await fetch(`${BASE}/run`, { method: 'POST' });
+  if (res.status === 409) throw new Error('A run is already in progress');
+  if (!res.ok) throw new Error(`Run failed: ${res.status}`);
+  return res.json();
+}

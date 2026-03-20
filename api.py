@@ -120,6 +120,8 @@ async def get_logs(agent_name: str, days: int = Query(default=30, ge=1, le=365))
     """Return the last N days of log entries from Supabase."""
     if agent_name not in ("momentum", "value"):
         raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
 
     result = (
         supabase.table("agent_logs")
@@ -141,6 +143,8 @@ async def get_history(agent_name: str, last: int = Query(default=30, ge=1, le=36
     """Return the last N days of history for an agent from Supabase."""
     if agent_name not in ("momentum", "value"):
         raise HTTPException(status_code=404, detail="Agent must be 'momentum' or 'value'")
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
 
     total = (
         supabase.table("agent_history")

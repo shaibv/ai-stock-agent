@@ -22,3 +22,15 @@ Traceback (most recent call last):
   File "/Users/shaibo/Dev/agentic-stock-tutorial/main.py", line 1, in <module>
     from dotenv import load_dotenv
 ModuleNotFoundError: No module named 'dotenv'
+Traceback (most recent call last):
+  File "/Users/shaibo/Dev/agentic-stock-tutorial/main.py", line 1, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+Traceback (most recent call last):
+  File "/Users/shaibo/Dev/agentic-stock-tutorial/main.py", line 1, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+Traceback (most recent call last):
+  File "/Users/shaibo/Dev/agentic-stock-tutorial/main.py", line 1, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'

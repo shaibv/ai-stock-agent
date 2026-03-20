@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchStatus, fetchHistory } from '../api';
+import { fetchStatus, fetchHistory, triggerRun } from '../api';
 import LeaderBadge from '../components/LeaderBadge';
 import AgentCard from '../components/AgentCard';
 
@@ -12,6 +12,8 @@ export default function Dashboard() {
   const [status, setStatus] = useState(null);
   const [history, setHistory] = useState({ momentum: [], value: [] });
   const [error, setError] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [runMsg, setRunMsg] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -37,12 +39,58 @@ export default function Dashboard() {
     return () => { active = false; clearInterval(timer); };
   }, []);
 
+  async function handleRun() {
+    setRunning(true);
+    setRunMsg(null);
+    try {
+      const result = await triggerRun();
+      setRunMsg(`Run complete — ${result.api_calls_total} API calls used`);
+      // Refresh data after run
+      const [st, mH, vH] = await Promise.all([
+        fetchStatus(),
+        fetchHistory('momentum', 10),
+        fetchHistory('value', 10),
+      ]);
+      setStatus(st);
+      setHistory({ momentum: mH.history, value: vH.history });
+    } catch (e) {
+      setRunMsg(`Error: ${e.message}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <>
       <div className="header">
         <h1 className="mono">STOCK AGENT COMPETITION</h1>
-        <LeaderBadge status={status} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <LeaderBadge status={status} />
+          <button
+            className="mono"
+            onClick={handleRun}
+            disabled={running}
+            style={{
+              padding: '6px 16px',
+              background: running ? 'var(--text-muted)' : 'var(--accent)',
+              color: '#000',
+              border: 'none',
+              borderRadius: 4,
+              cursor: running ? 'not-allowed' : 'pointer',
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 1,
+            }}
+          >
+            {running ? 'RUNNING…' : 'RUN AGENTS'}
+          </button>
+        </div>
       </div>
+      {runMsg && (
+        <div className="mono" style={{ textAlign: 'center', padding: '8px 16px', color: runMsg.startsWith('Error') ? 'var(--red)' : 'var(--accent)', fontSize: 12 }}>
+          {runMsg}
+        </div>
+      )}
 
       {error && (
         <div className="loading">Error: {error}. Is the API running?</div>
