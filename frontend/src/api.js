@@ -45,6 +45,14 @@ export async function createAgent(data) {
   return res.json();
 }
 
+export async function fetchPrices(tickers) {
+  if (!tickers || tickers.length === 0) return {};
+  const res = await fetch(`${BASE}/prices?tickers=${tickers.join(',')}`);
+  if (!res.ok) throw new Error(`Prices API error: ${res.status}`);
+  const data = await res.json();
+  return data.prices;
+}
+
 export async function deleteAgent(name) {
   const res = await fetch(`${BASE}/agents/${name}`, { method: 'DELETE' });
   if (res.status === 403) throw new Error('Built-in agents cannot be deleted');

@@ -141,9 +141,21 @@ def execute_rebalance(agent_name: str, agent_state: dict, new_portfolio: dict) -
 
     remaining_cash = round(total_value - allocated - trade_cost, 2)
 
+    # Update cost basis: keep existing prices on rebalance, record price on new buys, drop sells
+    old_cost_basis = (old_portfolio or {}).get("cost_basis", {})
+    trade_actions = {t["ticker"]: t["action"] for t in trades}
+    new_cost_basis = {}
+    for ticker in new_holdings:
+        action = trade_actions.get(ticker)
+        if action == "buy":
+            new_cost_basis[ticker] = prices.get(ticker)
+        else:
+            # rebalance or untouched — preserve original buy price
+            new_cost_basis[ticker] = old_cost_basis.get(ticker) or prices.get(ticker)
+
     agent_state["holdings"] = new_holdings
     agent_state["cash"] = remaining_cash
-    agent_state["last_portfolio"] = new_portfolio
+    agent_state["last_portfolio"] = {**new_portfolio, "cost_basis": new_cost_basis}
 
     today = date.today().isoformat()
     new_value = round(allocated + remaining_cash, 2)

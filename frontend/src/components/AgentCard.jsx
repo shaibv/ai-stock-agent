@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { fetchPrices } from '../api';
 
 const CONF_STARS = { high: '★★★', medium: '★★☆', low: '★☆☆' };
 const fmt$ = (v) => '$' + Math.round(v).toLocaleString();
@@ -15,11 +16,21 @@ function SignalPill({ signal }) {
 export default function AgentCard({ name, label, dotColor, data, history, locked, promptText, onDelete }) {
   if (!data) return null;
   const [strategyOpen, setStrategyOpen] = useState(false);
+  const [prices, setPrices] = useState({});
+  const [expandedTicker, setExpandedTicker] = useState(null);
+
+  const portfolio = data.last_portfolio?.portfolio || [];
+  const sorted = [...portfolio].sort((a, b) => b.weight_pct - a.weight_pct);
+  const costBasis = data.last_portfolio?.cost_basis || {};
+
+  useEffect(() => {
+    const tickers = (data.last_portfolio?.portfolio || []).map(h => h.ticker);
+    if (tickers.length === 0) return;
+    fetchPrices(tickers).then(setPrices).catch(() => {});
+  }, [data.last_portfolio]);
 
   const ret = data.total_return_pct;
   const retSign = ret >= 0 ? '+' : '';
-  const portfolio = data.last_portfolio?.portfolio || [];
-  const sorted = [...portfolio].sort((a, b) => b.weight_pct - a.weight_pct);
   const reversedHist = [...(history || [])].reverse();
 
   return (
@@ -72,20 +83,61 @@ export default function AgentCard({ name, label, dotColor, data, history, locked
 
       <table>
         <thead>
-          <tr><th>Ticker</th><th>Weight</th><th>Shares</th><th>Signal</th><th>Conf</th></tr>
+          <tr><th>Ticker</th><th>Weight</th><th>Shares</th><th>Today</th><th>Since Bought</th><th>Signal</th><th>Conf</th></tr>
         </thead>
         <tbody>
           {sorted.length === 0 ? (
-            <tr><td colSpan={5} style={{ color: 'var(--text-muted)' }}>No holdings yet</td></tr>
-          ) : sorted.map((h) => (
-            <tr key={h.ticker}>
-              <td style={{ fontWeight: 600 }}>{h.ticker}</td>
-              <td>{h.weight_pct}%</td>
-              <td>{data.holdings?.[h.ticker] || 0}</td>
-              <td><SignalPill signal={h.signal} /></td>
-              <td style={{ color: 'var(--yellow)', letterSpacing: 1 }}>{CONF_STARS[h.confidence] || CONF_STARS.low}</td>
-            </tr>
-          ))}
+            <tr><td colSpan={7} style={{ color: 'var(--text-muted)' }}>No holdings yet</td></tr>
+          ) : sorted.map((h) => {
+            const p = prices[h.ticker];
+            const todayChg = p?.change_pct;
+            const currentPrice = p?.price;
+            const buyPrice = costBasis[h.ticker];
+            const sinceBought = (buyPrice && currentPrice)
+              ? ((currentPrice - buyPrice) / buyPrice * 100).toFixed(2)
+              : null;
+            const isExpanded = expandedTicker === h.ticker;
+            return (
+              <>
+                <tr
+                  key={h.ticker}
+                  onClick={() => setExpandedTicker(isExpanded ? null : h.ticker)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td style={{ fontWeight: 600 }}>
+                    <span style={{ marginRight: 5, color: 'var(--text-muted)', fontSize: 9 }}>{isExpanded ? '▼' : '▶'}</span>
+                    {h.ticker}
+                  </td>
+                  <td>{h.weight_pct}%</td>
+                  <td>{data.holdings?.[h.ticker] || 0}</td>
+                  <td className={todayChg == null ? '' : todayChg >= 0 ? 'positive' : 'negative'} style={{ fontWeight: 600 }}>
+                    {todayChg == null ? <span style={{ color: 'var(--text-muted)' }}>—</span> : `${todayChg >= 0 ? '+' : ''}${todayChg}%`}
+                  </td>
+                  <td className={sinceBought == null ? '' : sinceBought >= 0 ? 'positive' : 'negative'} style={{ fontWeight: 600 }}>
+                    {sinceBought == null
+                      ? <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      : <span title={`Bought at $${buyPrice}`}>
+                          {sinceBought >= 0 ? '+' : ''}{sinceBought}%
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 10, marginLeft: 4 }}>
+                            @${buyPrice}
+                          </span>
+                        </span>
+                    }
+                  </td>
+                  <td><SignalPill signal={h.signal} /></td>
+                  <td style={{ color: 'var(--yellow)', letterSpacing: 1 }}>{CONF_STARS[h.confidence] || CONF_STARS.low}</td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${h.ticker}-rationale`}>
+                    <td colSpan={7} style={styles.rationaleCell}>
+                      <span style={styles.rationaleLabel}>Agent reasoning</span>
+                      {h.rationale || <span style={{ color: 'var(--text-muted)' }}>No rationale recorded.</span>}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
       </table>
 
@@ -156,6 +208,23 @@ const styles = {
   deleteBtn: {
     background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)',
     borderRadius: 4, cursor: 'pointer', fontSize: 12, padding: '2px 7px', lineHeight: 1,
+  },
+  rationaleCell: {
+    background: 'var(--bg)',
+    padding: '10px 16px',
+    fontSize: 12,
+    color: 'var(--text-muted)',
+    borderTop: 'none',
+    lineHeight: 1.6,
+  },
+  rationaleLabel: {
+    display: 'block',
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: 'var(--text-muted)',
+    marginBottom: 4,
   },
   strategyBox: {
     margin: '0 20px 0', padding: '10px 12px',

@@ -41,17 +41,27 @@ def search_reddit(ticker: str, limit: int = 10) -> dict:
 # ── Tool 2: Stock Data ──────────────────────────────────────────
 
 def get_stock_data(ticker: str) -> dict:
-    """Fetch price, P/E, market cap, 52w range, 30d momentum via yfinance."""
+    """Fetch price, P/E, market cap, 52w range, 30d momentum, and today's change via yfinance."""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
         hist = stock.history(period="30d")
-        current = round(hist["Close"].iloc[-1], 2) if not hist.empty else None
-        start   = hist["Close"].iloc[0]              if not hist.empty else None
-        momentum = round((current - start) / start * 100, 1) if current and start else None
+
+        # Today's live price and intraday change via fast_info
+        fi = stock.fast_info
+        live_price = round(fi.last_price, 2) if fi.last_price else None
+        prev_close = fi.previous_close
+        today_change_pct = round((fi.last_price - prev_close) / prev_close * 100, 2) if fi.last_price and prev_close else None
+
+        # 30-day momentum uses daily closes (yesterday back to 30 days ago)
+        start = hist["Close"].iloc[0] if not hist.empty else None
+        momentum = round((prev_close - start) / start * 100, 1) if prev_close and start else None
+
         return {
             "ticker": ticker,
-            "price": current,
+            "price": live_price,
+            "today_change_pct": today_change_pct,
+            "prev_close": round(prev_close, 2) if prev_close else None,
             "pe_ratio": info.get("forwardPE"),
             "market_cap_B": round(info.get("marketCap", 0) / 1e9, 1),
             "week52_high": info.get("fiftyTwoWeekHigh"),
@@ -119,6 +129,26 @@ def search_multiple_subreddits(query: str, subreddits: str = "wallstreetbets+inv
         })
     return {"query": query, "subreddits": subreddits, "post_count": len(posts), "posts": posts}
 
+# ── Tool 5: Yahoo Finance News ──────────────────────────────────
+
+def get_stock_news(ticker: str, limit: int = 8) -> dict:
+    """Fetch recent news headlines for a ticker via Yahoo Finance."""
+    try:
+        items = yf.Ticker(ticker).news or []
+        news = []
+        for n in items[:limit]:
+            content = n.get("content", {})
+            news.append({
+                "title": content.get("title"),
+                "publisher": content.get("provider", {}).get("displayName"),
+                "published": content.get("pubDate"),
+                "summary": content.get("summary", "")[:300],
+            })
+        return {"ticker": ticker, "news_count": len(news), "news": news}
+    except Exception as e:
+        return {"ticker": ticker, "error": str(e), "news": []}
+
+
 # ── Tool Schemas (OpenAI function-calling format) ────────────────
 
 TOOLS = [
@@ -146,9 +176,11 @@ TOOLS = [
         "function": {
             "name": "get_stock_data",
             "description": (
-                "Fetch current price, P/E ratio, market cap, 52-week range, "
-                "30-day momentum, and short interest. Always call this after "
-                "Reddit research to validate sentiment against real fundamentals."
+                "Fetch current live price, today's intraday change %, previous close, "
+                "P/E ratio, market cap, 52-week range, 30-day momentum, and short interest. "
+                "today_change_pct reflects what the stock has done TODAY — use this to avoid "
+                "buying into a stock that is already down sharply or to confirm momentum. "
+                "Always call this after Reddit research to validate sentiment against real fundamentals."
             ),
             "parameters": {
                 "type": "object",
@@ -181,6 +213,26 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_stock_news",
+            "description": (
+                "Fetch recent news headlines and summaries for a ticker from Yahoo Finance. "
+                "Use this to identify catalysts (earnings, FDA approvals, CEO changes, lawsuits) "
+                "that explain Reddit buzz or contradict it. Call this alongside get_stock_data "
+                "for any ticker you're seriously considering — news explains the 'why' behind price moves."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Stock ticker symbol, e.g. AAPL"},
+                    "limit": {"type": "integer", "description": "Number of headlines to return (default 8)"},
+                },
+                "required": ["ticker"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_multiple_subreddits",
             "description": (
                 "Search across r/wallstreetbets, r/investing, and r/stocks simultaneously "
@@ -205,6 +257,7 @@ TOOLS = [
 TOOL_FUNCTIONS = {
     "search_reddit": search_reddit,
     "get_stock_data": get_stock_data,
+    "get_stock_news": get_stock_news,
     "get_hot_posts": get_hot_posts,
     "search_multiple_subreddits": search_multiple_subreddits,
 }

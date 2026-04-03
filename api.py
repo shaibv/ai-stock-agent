@@ -167,9 +167,26 @@ async def delete_agent(agent_name: str):
     return {"deleted": agent_name}
 
 
+def _market_open_today() -> bool:
+    """Return True if the US market traded today (checks SPY's last session date)."""
+    import yfinance as yf
+    try:
+        hist = yf.Ticker("SPY").history(period="1d")
+        if hist.empty:
+            return False
+        return hist.index[-1].date() == date.today()
+    except Exception:
+        return False
+
+
 @app.post("/run")
-async def trigger_run():
-    """Trigger a full daily run for both agents. Returns results when complete."""
+async def trigger_run(force: bool = False):
+    """Trigger a full daily run for both agents. Returns results when complete.
+    Pass ?force=true to bypass the market-open check (useful for testing).
+    """
+    if not force and not _market_open_today():
+        return {"skipped": True, "reason": "Market closed today", "date": date.today().isoformat()}
+
     if _run_lock.locked():
         raise HTTPException(status_code=409, detail="A run is already in progress")
 
@@ -221,6 +238,29 @@ async def status():
         "leader": leader,
         "agents": agents_status,
     }
+
+
+@app.get("/prices")
+async def get_prices(tickers: str = Query(..., description="Comma-separated ticker symbols")):
+    """Return current price and day-change % for a list of tickers."""
+    import yfinance as yf
+
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    if not ticker_list:
+        return {"prices": {}}
+
+    result = {}
+    for ticker in ticker_list:
+        try:
+            fi = yf.Ticker(ticker).fast_info
+            price = fi.last_price
+            prev = fi.previous_close
+            change_pct = round((price - prev) / prev * 100, 2) if prev else None
+            result[ticker] = {"price": round(price, 2) if price else None, "change_pct": change_pct}
+        except Exception:
+            result[ticker] = {"price": None, "change_pct": None}
+
+    return {"prices": result}
 
 
 @app.get("/logs/{agent_name}", response_class=PlainTextResponse)
